@@ -145,25 +145,16 @@ def open_device(port_vec):
         configArray.push_back(xda.XsOutputConfiguration(xda.XDI_PacketCounter, 0))
         configArray.push_back(xda.XsOutputConfiguration(xda.XDI_SampleTimeFine, 0))
 
-        if device.deviceId().isImu():
-            configArray.push_back(xda.XsOutputConfiguration(xda.XDI_Acceleration, 100))
-            configArray.push_back(xda.XsOutputConfiguration(xda.XDI_RateOfTurn, 100))
-            configArray.push_back(xda.XsOutputConfiguration(xda.XDI_MagneticField, 100))
-        elif device.deviceId().isVru() or device.deviceId().isAhrs():
-            configArray.push_back(xda.XsOutputConfiguration(xda.XDI_Quaternion, 100))
-        elif device.deviceId().isGnss():
-            configArray.push_back(xda.XsOutputConfiguration(xda.XDI_Quaternion, 100))
-            configArray.push_back(xda.XsOutputConfiguration(xda.XDI_LatLon, 100))
-            configArray.push_back(xda.XsOutputConfiguration(xda.XDI_AltitudeEllipsoid, 100))
-            configArray.push_back(xda.XsOutputConfiguration(xda.XDI_VelocityXYZ, 100))
-        else:
-            raise RuntimeError("Unknown device while configuring. Aborting.")
+        configArray.push_back(xda.XsOutputConfiguration(xda.XDI_Quaternion, 100))
+        configArray.push_back(xda.XsOutputConfiguration(xda.XDI_Acceleration, 100))
+        configArray.push_back(xda.XsOutputConfiguration(xda.XDI_RateOfTurn, 100))
+        configArray.push_back(xda.XsOutputConfiguration(xda.XDI_MagneticField, 100))
 
         if not device.setOutputConfiguration(configArray):
             raise RuntimeError("Could not configure the device. Aborting.")
 
         print("Creating a log file...")
-        logFileName = "logfile.mtb"
+        logFileName = "log/logfile_{}.mtb".format(i)
         if device.createLogFile(logFileName) != xda.XRV_OK:
             raise RuntimeError("Failed to create a log file. Aborting.")
         else:
@@ -180,7 +171,7 @@ def open_device(port_vec):
         device_vec[i] = device
         callback_vec[i] = callback
         control_vec[i] = control
-    return device_vec, callback_vec, control
+    return device_vec, callback_vec, control_vec
 
 def capture_one_frame(callback_vec):
     '''
@@ -232,11 +223,11 @@ def capture_one_frame(callback_vec):
             #     s += " |E: %7.2f" % vel[0] + ", N: %7.2f" % vel[1] + ", U: %7.2f " % vel[2]
             # print("%s\r" % s, end="", flush=True)
 
-def close_device(device_vec, control_vec, port_vec):
+def close_device(device_vec, control_vec, port_vec, callback_vec):
     for i in range(len(device_vec)):
         device = device_vec[i]
-        control = control_vec[i]
         mtPort = port_vec[i]
+        callback = callback_vec[i]
         print("\nStopping recording...")
         if not device.stopRecording():
             raise RuntimeError("Failed to stop recording. Aborting.")
@@ -248,10 +239,10 @@ def close_device(device_vec, control_vec, port_vec):
         device.removeCallbackHandler(callback)
 
         print("Closing port...")
-        control.closePort(mtPort.portName())
+        control_vec[i].closePort(mtPort.portName())
 
         print("Closing XsControl object...")
-        control.close()
+        control_vec[i].close()
 
 
 if __name__ == '__main__':
@@ -264,154 +255,6 @@ if __name__ == '__main__':
     device_vec, callback_vec, control_vec = open_device(port_vec)
     for i in range(1000):
         data_vec = capture_one_frame(callback_vec)
+        time.sleep(1e-2)
         print(data_vec)
-    close_device(device_vec, control_vec, port_vec)
-
-
-    # read_imu = False
-    # if read_imu == True:
-    #     try:
-    #         print("Scanning for devices...")
-    #         for i in range(10):
-    #             portInfoArray =  xda.XsScanner_scanPorts()
-    #             if 3 == portInfoArray.size():
-    #                 break
-    #         print('IMU number: {}'.format(portInfoArray.size()))
-    #         # Find an MTi device
-    #         mtPort = xda.XsPortInfo()
-    #         for i in range(portInfoArray.size()):
-    #             mtPort = portInfoArray[i]
-    #             print('IMU number : {}, device id: {}'.format(i, mtPort.deviceId()))
-    #
-    #         if portInfoArray[i].deviceId().isMti() or portInfoArray[i].deviceId().isMtig():
-    #             mtPort = portInfoArray[1]
-    #
-    #         if mtPort.empty():
-    #             raise RuntimeError("No MTi device found. Aborting.")
-    #
-    #         did = mtPort.deviceId()
-    #         print("Found a device with:")
-    #         print(" Device ID: %s" % did.toXsString())
-    #         print(" Port name: %s" % mtPort.portName())
-    #
-    #         print("Opening port...")
-    #         if not control.openPort(mtPort.portName(), mtPort.baudrate()):
-    #             raise RuntimeError("Could not open port. Aborting.")
-    #
-    #         # Get the device object
-    #         device = control.device(did)
-    #         assert(device != 0)
-    #
-    #         print("Device: %s, with ID: %s opened." % (device.productCode(), device.deviceId().toXsString()))
-    #
-    #         # Create and attach callback handler to device
-    #         callback = XdaCallback()
-    #         device.addCallbackHandler(callback)
-    #
-    #         # Put the device into configuration mode before configuring the device
-    #         print("Putting device into configuration mode...")
-    #         if not device.gotoConfig():
-    #             raise RuntimeError("Could not put device into configuration mode. Aborting.")
-    #
-    #         print("Configuring the device...")
-    #         configArray = xda.XsOutputConfigurationArray()
-    #         configArray.push_back(xda.XsOutputConfiguration(xda.XDI_PacketCounter, 0))
-    #         configArray.push_back(xda.XsOutputConfiguration(xda.XDI_SampleTimeFine, 0))
-    #
-    #         if device.deviceId().isImu():
-    #             configArray.push_back(xda.XsOutputConfiguration(xda.XDI_Acceleration, 100))
-    #             configArray.push_back(xda.XsOutputConfiguration(xda.XDI_RateOfTurn, 100))
-    #             configArray.push_back(xda.XsOutputConfiguration(xda.XDI_MagneticField, 100))
-    #         elif device.deviceId().isVru() or device.deviceId().isAhrs():
-    #             configArray.push_back(xda.XsOutputConfiguration(xda.XDI_Quaternion, 100))
-    #         elif device.deviceId().isGnss():
-    #             configArray.push_back(xda.XsOutputConfiguration(xda.XDI_Quaternion, 100))
-    #             configArray.push_back(xda.XsOutputConfiguration(xda.XDI_LatLon, 100))
-    #             configArray.push_back(xda.XsOutputConfiguration(xda.XDI_AltitudeEllipsoid, 100))
-    #             configArray.push_back(xda.XsOutputConfiguration(xda.XDI_VelocityXYZ, 100))
-    #         else:
-    #             raise RuntimeError("Unknown device while configuring. Aborting.")
-    #
-    #         if not device.setOutputConfiguration(configArray):
-    #             raise RuntimeError("Could not configure the device. Aborting.")
-    #
-    #         print("Creating a log file...")
-    #         logFileName = "logfile.mtb"
-    #         if device.createLogFile(logFileName) != xda.XRV_OK:
-    #             raise RuntimeError("Failed to create a log file. Aborting.")
-    #         else:
-    #             print("Created a log file: %s" % logFileName)
-    #
-    #         print("Putting device into measurement mode...")
-    #         if not device.gotoMeasurement():
-    #             raise RuntimeError("Could not put device into measurement mode. Aborting.")
-    #
-    #         print("Starting recording...")
-    #         if not device.startRecording():
-    #             raise RuntimeError("Failed to start recording. Aborting.")
-    #
-    #         print("Main loop. Recording data for 10 seconds.")
-    #
-    #         startTime = xda.XsTimeStamp_nowMs()
-    #         while xda.XsTimeStamp_nowMs() - startTime <= 10000:
-    #             if callback.packetAvailable():
-    #                 # Retrieve a packet
-    #                 packet = callback.getNextPacket()
-    #
-    #                 s = ""
-    #
-    #                 if packet.containsCalibratedData():
-    #                     acc = packet.calibratedAcceleration()
-    #                     s = "Acc X: %.2f" % acc[0] + ", Acc Y: %.2f" % acc[1] + ", Acc Z: %.2f" % acc[2]
-    #
-    #                     gyr = packet.calibratedGyroscopeData()
-    #                     s += " |Gyr X: %.2f" % gyr[0] + ", Gyr Y: %.2f" % gyr[1] + ", Gyr Z: %.2f" % gyr[2]
-    #
-    #                     mag = packet.calibratedMagneticField()
-    #                     s += " |Mag X: %.2f" % mag[0] + ", Mag Y: %.2f" % mag[1] + ", Mag Z: %.2f" % mag[2]
-    #
-    #                 if packet.containsOrientation():
-    #                     quaternion = packet.orientationQuaternion()
-    #                     s = "q0: %.2f" % quaternion[0] + ", q1: %.2f" % quaternion[1] + ", q2: %.2f" % quaternion[2] + ", q3: %.2f " % quaternion[3]
-    #
-    #                     euler = packet.orientationEuler()
-    #                     s += " |Roll: %.2f" % euler.x() + ", Pitch: %.2f" % euler.y() + ", Yaw: %.2f " % euler.z()
-    #
-    #                 if packet.containsLatitudeLongitude():
-    #                     latlon = packet.latitudeLongitude()
-    #                     s += " |Lat: %7.2f" % latlon[0] + ", Lon: %7.2f " % latlon[1]
-    #
-    #                 if packet.containsAltitude():
-    #                     s += " |Alt: %7.2f " % packet.altitude()
-    #
-    #                 if packet.containsVelocity():
-    #                     vel = packet.velocity(xda.XDI_CoordSysEnu)
-    #                     s += " |E: %7.2f" % vel[0] + ", N: %7.2f" % vel[1] + ", U: %7.2f " % vel[2]
-    #
-    #                 print("%s\r" % s, end="", flush=True)
-    #
-    #         print("\nStopping recording...")
-    #         if not device.stopRecording():
-    #             raise RuntimeError("Failed to stop recording. Aborting.")
-    #
-    #         print("Closing log file...")
-    #         if not device.closeLogFile():
-    #             raise RuntimeError("Failed to close log file. Aborting.")
-    #
-    #         print("Removing callback handler...")
-    #         device.removeCallbackHandler(callback)
-    #
-    #         print("Closing port...")
-    #         control.closePort(mtPort.portName())
-    #
-    #         print("Closing XsControl object...")
-    #         control.close()
-    #
-    #     except RuntimeError as error:
-    #         print(error)
-    #         sys.exit(1)
-    #     except:
-    #         print("An unknown fatal error has occured. Aborting.")
-    #         sys.exit(1)
-    #     else:
-    #         print("Successful exit.")
+    close_device(device_vec, control_vec, port_vec, callback_vec)
