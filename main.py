@@ -33,7 +33,7 @@ import numpy as np
 import sys
 import xsensdeviceapi as xda
 import time
-import keyboard
+import matplotlib.pyplot as plt
 from threading import Lock
 
 init_time = time.time()
@@ -195,6 +195,11 @@ def capture_one_frame(callback_vec):
             data_vec[(9 * i): (9 * (i + 1))] = np.array([euler.x(), euler.y(), euler.z(),
                                                          acc[0], acc[1], acc[2],
                                                          gyr[0], gyr[1], gyr[2]])
+            # data_vec[1] = np.remainder(data_vec[1], 360) - 180
+            # data_vec[1 + 9] = np.remainder(data_vec[1 + 9], 360) - 180
+            # data_vec[1+9*2] = np.remainder(data_vec[1+9*2], 360) - 180
+        else:
+            return None
     return data_vec
             # s = ""
             # # quaternion = packet.orientationQuaternion()
@@ -245,6 +250,91 @@ def close_device(device_vec, control_vec, port_vec, callback_vec):
         control_vec[i].close()
 
 
+def fifo_data_vec(data_mat, data_vec):
+    data_mat[:-1] = data_mat[1:]
+    data_mat[-1] = data_vec
+    return data_mat
+
+
+def init_plot():
+    fig = plt.figure(figsize=(16, 4))
+    pitch_vec = np.zeros((100, 3))
+    acc_z_vec = np.zeros((100, 3))
+    joint_angle_vec, joint_x_vec, joint_y_vec = calc_leg_data(pitch_vec)
+    line_list = []
+
+    plt.subplot(1, 3, 1)
+    line, = plt.plot(joint_x_vec, joint_y_vec, marker = 'o', linewidth = 5, markersize = 10)
+    line_list.append(line)
+    plt.ylim([-3, 1])
+    plt.xlim([-3, 3])
+    plt.xlabel('x (m)')
+    plt.ylabel('y (m)')
+
+    plt.subplot(1, 3, 2)
+    for i in range(joint_angle_vec.shape[1]):
+        line, = plt.plot(joint_angle_vec[:, i])
+        line_list.append(line)
+    plt.ylim([-4, 4])
+    plt.xlabel('Time step')
+    plt.ylabel(r'Angle $(\degree)$')
+    plt.legend(['Thigh', 'Knee', 'Ankle'])
+
+    plt.subplot(1, 3, 3)
+    for i in range(acc_z_vec.shape[1]):
+        line, = plt.plot(acc_z_vec[:, i])
+        line_list.append(line)
+    plt.ylim([-10, 10])
+    plt.xlabel('Time step')
+    plt.ylabel(r'Acceleration $(ms^{-2})$')
+
+    fig.tight_layout()
+    plt.pause(0.1)
+    return fig, line_list
+
+
+def update_plot(fig, line_list, pitch_vec, acc_z_vec):
+    joint_angle_vec, joint_x_vec, joint_y_vec = calc_leg_data(pitch_vec)
+    print(joint_angle_vec.shape, acc_z_vec.shape, joint_x_vec.shape, joint_y_vec.shape)
+    line_list[0].set_xdata(joint_x_vec)
+    line_list[0].set_ydata(joint_y_vec)
+    for i in range(3):
+        line_list[i+1].set_ydata(joint_angle_vec[:, i])
+    for i in range(3):
+        line_list[i+4].set_ydata(acc_z_vec[:, i])
+    fig.canvas.draw()
+    fig.canvas.flush_events()
+
+
+def calc_leg_data(pitch_vec):
+    joint_angle_vec = calc_joint_angle(pitch_vec)
+    joint_x_vec, joint_y_vec = calc_joint_points(joint_angle_vec[-1])
+    return joint_angle_vec, joint_x_vec, joint_y_vec
+
+
+def calc_joint_angle(pitch_vec):
+    pitch_vec *= np.pi / 180
+    return np.c_[pitch_vec[:, 0], pitch_vec[:, 1] - pitch_vec[:, 0], pitch_vec[:, 2]-pitch_vec[:, 1]]
+
+
+def calc_joint_points(joint_angle_vec):
+    delta_x_vec = np.zeros(3)
+    delta_y_vec = np.zeros(3)
+    angle_bias = [0, 0, np.pi/2]
+    for i in range(3):
+        delta_x_vec[i] =  np.sin(np.sum(joint_angle_vec[:i+1])+angle_bias[i])
+        delta_y_vec[i] = -np.cos(np.sum(joint_angle_vec[:i+1])+angle_bias[i])
+    delta_x_vec[-1] *= 0.5
+    delta_y_vec[-1] *= 0.5
+    x_vec = np.zeros(4)
+    y_vec = np.zeros(4)
+    for i in range(1, 4):
+        x_vec[i] = np.sum(delta_x_vec[:i])
+        y_vec[i] = np.sum(delta_y_vec[:i])
+    return x_vec, y_vec
+
+
+
 if __name__ == '__main__':
     print("Creating XsControl object...")
     control = xda.XsControl_construct()
@@ -253,8 +343,17 @@ if __name__ == '__main__':
     ref_device_id_vec = np.array(['038819D6', '038818ED', '03881B05'])  # Hip, Knee, Ankle
     port_vec,_ = get_port_vec(ref_device_id_vec)
     device_vec, callback_vec, control_vec = open_device(port_vec)
-    for i in range(1000):
-        data_vec = capture_one_frame(callback_vec)
-        time.sleep(1e-2)
-        print(data_vec)
+    data_mat = np.zeros((100, 3*9 + 1))
+    data_init = np.zeros(3*9 + 1)
+    fig, line_list = init_plot()
+    fs = 100 # Hz
+    for i in range(20 * fs):
+        data_vec = capture_one_frame(callback_vec) - data_init
+        if data_vec is not None:
+            data_mat = fifo_data_vec(data_mat, data_vec)
+            update_plot(fig, line_list,
+                        pitch_vec=data_mat[:, [1, 1+9, 1+9*2]], acc_z_vec=data_mat[:, [5, 5+9, 5+9*2]])
+        if i == 3 * fs:
+            data_init = np.mean(data_mat[-fs:], axis=0)
+        time.sleep(1/fs)
     close_device(device_vec, control_vec, port_vec, callback_vec)
