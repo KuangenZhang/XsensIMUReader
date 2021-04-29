@@ -333,9 +333,9 @@ def calc_joint_points(joint_angle_vec):
 
 
 if __name__ == '__main__':
-    is_train = False
+    is_train = True
     fs = 100  # Hz
-    capture_time = 10 #s
+    capture_time = 60 #s
     if is_train:
         print("Creating XsControl object...")
         control = xda.XsControl_construct()
