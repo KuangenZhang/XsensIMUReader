@@ -293,7 +293,6 @@ def init_plot():
 
 def update_plot(fig, line_list, roll_vec, acc_z_vec):
     joint_angle_vec, joint_x_vec, joint_y_vec = calc_leg_data(roll_vec)
-    print(joint_angle_vec.shape, acc_z_vec.shape, joint_x_vec.shape, joint_y_vec.shape)
     line_list[0].set_xdata(joint_x_vec)
     line_list[0].set_ydata(joint_y_vec)
     for i in range(3):
@@ -334,24 +333,38 @@ def calc_joint_points(joint_angle_vec):
 
 
 if __name__ == '__main__':
-    print("Creating XsControl object...")
-    control = xda.XsControl_construct()
-    assert(control != 0)
-
-    ref_device_id_vec = np.array(['038819D6', '038818ED', '03881B05'])  # Hip, Knee, Ankle
-    port_vec,_ = get_port_vec(ref_device_id_vec)
-    device_vec, callback_vec, control_vec = open_device(port_vec)
-    data_mat = np.zeros((100, 3*9 + 1))
-    data_init = np.zeros(3*9 + 1)
-    fig, line_list = init_plot()
-    fs = 100 # Hz
-    for i in range(20 * fs):
-        data_vec = capture_one_frame(callback_vec) - data_init
-        if data_vec is not None:
-            data_mat = fifo_data_vec(data_mat, data_vec)
+    is_train = False
+    fs = 100  # Hz
+    capture_time = 10 #s
+    if is_train:
+        print("Creating XsControl object...")
+        control = xda.XsControl_construct()
+        assert(control != 0)
+        ref_device_id_vec = np.array(['038819D6', '038818ED', '03881B05'])  # Hip, Knee, Ankle
+        port_vec,_ = get_port_vec(ref_device_id_vec)
+        device_vec, callback_vec, control_vec = open_device(port_vec)
+        data_init = np.zeros(3*9 + 1)
+        fig, line_list = init_plot()
+        data_mat = np.zeros((fs*capture_time, 3 * 9 + 1))
+        for i in range(fs*capture_time):
+            data_vec = capture_one_frame(callback_vec) - data_init
+            if data_vec is not None:
+                data_mat = fifo_data_vec(data_mat, data_vec)
+                update_plot(fig, line_list,
+                            roll_vec=data_mat[-100:, [0, 0 + 9, 0 + 9 * 2]],
+                            acc_z_vec=data_mat[-100:, [5, 5 + 9, 5 + 9 * 2]])
+            if i == 3 * fs:
+                data_init = np.mean(data_mat[-fs:], axis=0)
+            if 0 == i % 100:
+                np.save('data/walking.npy', data_mat)
+            time.sleep(0.5/fs)
+        close_device(device_vec, control_vec, port_vec, callback_vec)
+    else:
+        data_mat = np.load('data/walking.npy')
+        fig, line_list = init_plot()
+        for i in range(fs * capture_time - 100):
             update_plot(fig, line_list,
-                        roll_vec=data_mat[:, [0, 0 + 9, 0 + 9 * 2]], acc_z_vec=data_mat[:, [5, 5 + 9, 5 + 9 * 2]])
-        if i == 3 * fs:
-            data_init = np.mean(data_mat[-fs:], axis=0)
-        time.sleep(1/fs)
-    close_device(device_vec, control_vec, port_vec, callback_vec)
+                        roll_vec=data_mat[i:i+100, [0, 0 + 9, 0 + 9 * 2]],
+                        acc_z_vec=data_mat[i:i+100, [5, 5 + 9, 5 + 9 * 2]])
+
+
