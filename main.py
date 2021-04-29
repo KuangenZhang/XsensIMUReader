@@ -192,12 +192,10 @@ def capture_one_frame(callback_vec):
             euler = packet.orientationEuler()
             acc = packet.calibratedAcceleration()
             gyr = packet.calibratedGyroscopeData()
-            data_vec[(9 * i): (9 * (i + 1))] = np.array([euler.x(), euler.y(), euler.z(),
+            data_vec[(9 * i): (9 * (i + 1))] = np.array([-euler.x(), euler.y(), euler.z(),
                                                          acc[0], acc[1], acc[2],
-                                                         gyr[0], gyr[1], gyr[2]])
-            # data_vec[1] = np.remainder(data_vec[1], 360) - 180
-            # data_vec[1 + 9] = np.remainder(data_vec[1 + 9], 360) - 180
-            # data_vec[1+9*2] = np.remainder(data_vec[1+9*2], 360) - 180
+                                                         gyr[0], gyr[1], gyr[2]]) # change the sign of roll to fit human joint angle direction
+            data_vec[0+9*2] *= -1
         else:
             return None
     return data_vec
@@ -293,8 +291,8 @@ def init_plot():
     return fig, line_list
 
 
-def update_plot(fig, line_list, pitch_vec, acc_z_vec):
-    joint_angle_vec, joint_x_vec, joint_y_vec = calc_leg_data(pitch_vec)
+def update_plot(fig, line_list, roll_vec, acc_z_vec):
+    joint_angle_vec, joint_x_vec, joint_y_vec = calc_leg_data(roll_vec)
     print(joint_angle_vec.shape, acc_z_vec.shape, joint_x_vec.shape, joint_y_vec.shape)
     line_list[0].set_xdata(joint_x_vec)
     line_list[0].set_ydata(joint_y_vec)
@@ -306,15 +304,15 @@ def update_plot(fig, line_list, pitch_vec, acc_z_vec):
     fig.canvas.flush_events()
 
 
-def calc_leg_data(pitch_vec):
-    joint_angle_vec = calc_joint_angle(pitch_vec)
+def calc_leg_data(roll_vec):
+    joint_angle_vec = calc_joint_angle(roll_vec)
     joint_x_vec, joint_y_vec = calc_joint_points(joint_angle_vec[-1])
     return joint_angle_vec, joint_x_vec, joint_y_vec
 
 
-def calc_joint_angle(pitch_vec):
-    pitch_vec *= np.pi / 180
-    return np.c_[pitch_vec[:, 0], pitch_vec[:, 1] - pitch_vec[:, 0], pitch_vec[:, 2]-pitch_vec[:, 1]]
+def calc_joint_angle(roll_vec):
+    roll_vec *= np.pi / 180
+    return np.c_[roll_vec[:, 0], roll_vec[:, 1] - roll_vec[:, 0], roll_vec[:, 2] - roll_vec[:, 1]]
 
 
 def calc_joint_points(joint_angle_vec):
@@ -352,7 +350,7 @@ if __name__ == '__main__':
         if data_vec is not None:
             data_mat = fifo_data_vec(data_mat, data_vec)
             update_plot(fig, line_list,
-                        pitch_vec=data_mat[:, [1, 1+9, 1+9*2]], acc_z_vec=data_mat[:, [5, 5+9, 5+9*2]])
+                        roll_vec=data_mat[:, [0, 0 + 9, 0 + 9 * 2]], acc_z_vec=data_mat[:, [5, 5 + 9, 5 + 9 * 2]])
         if i == 3 * fs:
             data_init = np.mean(data_mat[-fs:], axis=0)
         time.sleep(1/fs)
