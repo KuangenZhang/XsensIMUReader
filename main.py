@@ -333,7 +333,8 @@ def calc_joint_points(joint_angle_vec):
 
 
 if __name__ == '__main__':
-    is_train = True
+    is_train = False
+    is_visualize =  False
     fs = 100  # Hz
     capture_time = 60 #s
     if is_train:
@@ -344,25 +345,42 @@ if __name__ == '__main__':
         port_vec,_ = get_port_vec(ref_device_id_vec)
         device_vec, callback_vec, control_vec = open_device(port_vec)
         data_init = np.zeros(3*9 + 1)
-        fig, line_list = init_plot()
+        if is_visualize:
+            fig, line_list = init_plot()
         data_mat = np.zeros((fs*capture_time, 3 * 9 + 1))
+        last_time = time.time()
+        calibrated_str = ''
         for i in range(fs*capture_time):
-            data_vec = capture_one_frame(callback_vec) - data_init
+            data_vec = capture_one_frame(callback_vec)
             if data_vec is not None:
+                data_vec -= data_init
                 data_mat = fifo_data_vec(data_mat, data_vec)
-                update_plot(fig, line_list,
-                            roll_vec=data_mat[-100:, [0, 0 + 9, 0 + 9 * 2]],
-                            acc_z_vec=data_mat[-100:, [5, 5 + 9, 5 + 9 * 2]])
-            if i == 3 * fs:
+                if is_visualize:
+                    update_plot(fig, line_list,
+                                roll_vec=data_mat[-100:, [0, 0 + 9, 0 + 9 * 2]],
+                                acc_z_vec=data_mat[-100:, [5, 5 + 9, 5 + 9 * 2]])
+                current_time = time.time()
+                print('Capturing time: {:.1f} ms'.format(1e3 * (current_time - last_time)))
+                last_time = time.time()
+            if 500 == i:
                 data_init = np.mean(data_mat[-fs:], axis=0)
+                calibrated_str = '---Calibrated---'
             if 0 == i % 100:
                 np.save('data/walking.npy', data_mat)
-            time.sleep(0.5/fs)
+            print('{}, time: {:.1f} s'.format(calibrated_str, time.time() - init_time))
+            time.sleep(0.97 / fs)
+            if time.time() - init_time > capture_time:
+                print('Desired frame number: {}, actual frame number {}'.format(fs*capture_time, i))
+                break
         close_device(device_vec, control_vec, port_vec, callback_vec)
     else:
         data_mat = np.load('data/walking.npy')
+        data_mat = data_mat[2300:-300]
+        roll_vec = data_mat[:, [0, 0 + 9, 0 + 9 * 2]]
+        plt.plot(roll_vec)
+        plt.show()
         fig, line_list = init_plot()
-        for i in range(fs * capture_time - 100):
+        for i in range(data_mat.shape[0] - 100):
             update_plot(fig, line_list,
                         roll_vec=data_mat[i:i+100, [0, 0 + 9, 0 + 9 * 2]],
                         acc_z_vec=data_mat[i:i+100, [5, 5 + 9, 5 + 9 * 2]])
